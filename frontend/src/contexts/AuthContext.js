@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
+import api from '../services/api';
 import { toast } from 'react-toastify';
 
 const AuthContext = createContext();
@@ -17,6 +18,14 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [lastRequestTime, setLastRequestTime] = useState(0);
+  // Resolve API base. Prefer build-time env; otherwise, choose sensible runtime fallback
+  const API_BASE =
+    process.env.REACT_APP_API_URL ||
+    (typeof window !== 'undefined'
+      ? (window.location.hostname.endsWith('vercel.app')
+          ? 'https://hrms-iwiz.onrender.com/api'
+          : '/api')
+      : '/api');
 
   // Request throttling to prevent rate limiting
   const throttleRequest = async (requestFn) => {
@@ -47,8 +56,8 @@ export const AuthProvider = ({ children }) => {
   const testBackendConnection = async () => {
     try {
       console.log('Testing backend connection...');
-      const response = await axios.get('/api/auth/test', { 
-        timeout: 5000,
+      const response = await api.get('/auth/test', { 
+        timeout: 20000,
         headers: {
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
@@ -78,7 +87,7 @@ export const AuthProvider = ({ children }) => {
     const checkAuth = async () => {
       if (token) {
         try {
-          const response = await axios.get('/api/auth/me');
+          const response = await api.get('/auth/me');
           setUser(response.data.data.user);
         } catch (error) {
           console.error('Auth check failed:', error);
@@ -121,7 +130,7 @@ export const AuthProvider = ({ children }) => {
       
       const response = await throttleRequest(async () => {
         return await retryWithBackoff(async () => {
-          return await axios.post('/api/auth/login', payload);
+          return await api.post('/auth/login', payload);
         });
       });
       
@@ -148,7 +157,7 @@ export const AuthProvider = ({ children }) => {
         config: error.config
       });
       
-      let message = 'Login failed';
+      let message = error.userMessage || 'Login failed';
       
       if (error.response) {
         // Server responded with error status
@@ -166,10 +175,10 @@ export const AuthProvider = ({ children }) => {
         }
       } else if (error.request) {
         // Network error
-        message = 'Network error. Please check your connection and ensure the backend server is running';
+        message = error.userMessage || 'Unable to connect. Please check your internet or contact admin.';
       } else {
         // Other error
-        message = error.message || 'An unexpected error occurred';
+        message = error.userMessage || error.message || 'An unexpected error occurred';
       }
       
       toast.error(message);
@@ -191,7 +200,7 @@ export const AuthProvider = ({ children }) => {
       
       const response = await throttleRequest(async () => {
         return await retryWithBackoff(async () => {
-          return await axios.post('/api/auth/register', payload);
+          return await api.post('/auth/register', payload);
         });
       });
       
@@ -262,7 +271,7 @@ export const AuthProvider = ({ children }) => {
 
   const updateProfile = async (profileData) => {
     try {
-      const response = await axios.put('/api/auth/profile', profileData);
+      const response = await api.put('/auth/profile', profileData);
       setUser(response.data.data.user);
       toast.success('Profile updated successfully!');
       return { success: true };
@@ -275,7 +284,7 @@ export const AuthProvider = ({ children }) => {
 
   const changePassword = async (currentPassword, newPassword) => {
     try {
-      await axios.post('/api/auth/change-password', {
+      await api.post('/auth/change-password', {
         currentPassword,
         newPassword
       });

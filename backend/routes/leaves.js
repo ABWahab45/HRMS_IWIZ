@@ -211,6 +211,9 @@ router.get('/pending', protect, authorize('admin', 'hr'), async (req, res) => {
   try {
     const leaves = await Leave.getPendingLeaves();
 
+    // Prevent any intermediary/proxy/browser caching of admin lists
+    res.set('Cache-Control', 'no-store');
+
     res.json({
       success: true,
       data: {
@@ -247,8 +250,8 @@ router.get('/all', protect, authorize('admin'), async (req, res) => {
     
     const { page = 1, limit = 20, status, leaveType, employeeId } = req.query;
     
-    // Build query
-    const query = { userType: 'employee' };
+    // Build query - include all leaves regardless of stored userType to avoid legacy data exclusion
+    const query = {};
     
     if (status) {
       query.status = status;
@@ -263,26 +266,36 @@ router.get('/all', protect, authorize('admin'), async (req, res) => {
     }
 
     const leaves = await Leave.find(query)
-      .populate('userId', 'fullName employeeId department')
+      .populate('userId', 'fullName employeeId department email')
       .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+      .limit(parseInt(limit))
+      .skip((parseInt(page) - 1) * parseInt(limit));
 
     const total = await Leave.countDocuments(query);
 
     console.log(`Found ${leaves.length} leave requests`);
+    
+    // Debug: Log the first record to see the structure
+    if (leaves.length > 0) {
+      console.log('First leave record structure:', JSON.stringify(leaves[0], null, 2));
+      console.log('First record userId:', leaves[0].userId);
+      console.log('First record userId.fullName:', leaves[0].userId?.fullName);
+    }
+
+    // Prevent any intermediary/proxy/browser caching of admin lists
+    res.set('Cache-Control', 'no-store');
 
     res.json({
       success: true,
       data: {
         leaves: leaves.map(leave => ({
           id: leave._id,
-          employeeId: leave.userId?.employeeId || 'N/A',
-          employeeName: leave.userId?.fullName || 'Unknown',
+          employeeId: leave.userId?.employeeId || leave.userId?._id || 'N/A',
+          employeeName: leave.userId?.fullName || leave.userId?.email || 'Unknown',
           department: leave.userId?.department || 'N/A',
           leaveType: leave.leaveType,
-          fromDate: leave.fromDate,
-          toDate: leave.toDate,
+          fromDate: leave.fromDateFormatted || leave.fromDate,
+          toDate: leave.toDateFormatted || leave.toDate,
           totalDays: leave.totalDays,
           reason: leave.reason,
           status: leave.status,

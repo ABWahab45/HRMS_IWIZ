@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { FiDollarSign, FiDownload, FiCalendar, FiUsers, FiBarChart2, FiCheck, FiRefreshCw } from 'react-icons/fi';
-import axios from 'axios';
+import { FiDownload, FiCalendar, FiUsers, FiBarChart2, FiCheck, FiRefreshCw } from 'react-icons/fi';
+import Button from '../components/common/Button';
+import api from '../services/api';
 import { toast } from 'react-toastify';
+import { formatCurrency } from '../utils/helpers';
 import moment from 'moment';
 import './Payroll.css';
 
@@ -21,21 +23,33 @@ const Payroll = () => {
       setLoading(true);
       
       if (activeTab === 'overview') {
+        // Fix month/year handling - ensure we get the correct month (1-12) and year
+        const month = parseInt(selectedMonth.split('-')[1]); // Extract month from YYYY-MM format
+        const year = parseInt(selectedYear);
+        
+        console.log('Fetching payroll data for month:', month, 'year:', year);
+        
         const [payrollsRes, summaryRes] = await Promise.all([
-          axios.get(`/api/payroll/all?page=${currentPage}&limit=10&month=${moment(selectedMonth).month() + 1}&year=${selectedYear}`),
-          axios.get(`/api/payroll/reports/summary?month=${moment(selectedMonth).month() + 1}&year=${selectedYear}`)
+          api.get(`/payroll/all?page=${currentPage}&limit=10&month=${month}&year=${year}`),
+          api.get(`/payroll/reports/summary?month=${month}&year=${year}`)
         ]);
         
-        setPayrolls(payrollsRes.data.data.payrolls);
-        setTotalPages(payrollsRes.data.data.pagination.totalPages);
-        setSummary(summaryRes.data.data.summary);
+        console.log('Payrolls response:', payrollsRes.data);
+        console.log('Summary response:', summaryRes.data);
+        
+        setPayrolls(payrollsRes.data?.data?.payrolls || []);
+        setTotalPages(payrollsRes.data?.data?.pagination?.totalPages || 1);
+        setSummary(summaryRes.data?.data?.summary || {});
+        
+        console.log('Summary data set:', summaryRes.data?.data?.summary);
       } else if (activeTab === 'generate') {
         // Fetch recent payrolls for reference
-        const response = await axios.get('/api/payroll/all?page=1&limit=5');
-        setPayrolls(response.data.data.payrolls);
+        const response = await api.get('/payroll/all?page=1&limit=5');
+        setPayrolls(response.data?.data?.payrolls || []);
       }
     } catch (error) {
       console.error('Error fetching payroll data:', error);
+      console.error('Error details:', error.response?.data);
       toast.error('Failed to load payroll data');
     } finally {
       setLoading(false);
@@ -49,10 +63,12 @@ const Payroll = () => {
   const generatePayroll = async () => {
     try {
       setGenerating(true);
-      const month = moment(selectedMonth).month() + 1;
+      const month = parseInt(selectedMonth.split('-')[1]); // Extract month from YYYY-MM format
       const year = parseInt(selectedYear);
       
-      const response = await axios.post('/api/payroll/generate', { month, year });
+      console.log('Generating payroll for month:', month, 'year:', year);
+      
+      const response = await api.post('/payroll/generate', { month, year });
       
       toast.success(response.data.message);
       fetchPayrollData();
@@ -66,7 +82,7 @@ const Payroll = () => {
 
   const downloadSalarySlip = async (payrollId) => {
     try {
-      const response = await axios.get(`/api/payroll/${payrollId}/download`, {
+      const response = await api.get(`/payroll/${payrollId}/download`, {
         responseType: 'blob'
       });
       
@@ -87,11 +103,12 @@ const Payroll = () => {
 
   const updatePayrollStatus = async (payrollId, status) => {
     try {
-      await axios.put(`/api/payroll/${payrollId}/status`, { status });
+      await api.put(`/payroll/${payrollId}/status`, { status });
       toast.success('Payroll status updated successfully');
       fetchPayrollData();
     } catch (error) {
       console.error('Error updating payroll status:', error);
+      console.error('Error response:', error.response?.data);
       toast.error('Failed to update payroll status');
     }
   };
@@ -105,40 +122,59 @@ const Payroll = () => {
             <FiUsers />
           </div>
           <div className="card-content">
-            <h3>{summary.totalEmployees || 0}</h3>
+            <h3>{summary.employeesActive || summary.totalEmployees || 0}</h3>
             <p>Total Employees</p>
           </div>
         </div>
         
         <div className="summary-card">
-          <div className="card-icon">
-            <FiDollarSign />
-          </div>
+          <div className="card-icon">Rs</div>
           <div className="card-content">
-            <h3>${(summary.totalNetPay || 0).toLocaleString()}</h3>
+            <h3>{formatCurrency(summary.totalNetPay || 0)}</h3>
             <p>Total Net Pay</p>
           </div>
         </div>
         
         <div className="summary-card">
-          <div className="card-icon">
-            <FiBarChart2 />
-          </div>
+          <div className="card-icon">Rs</div>
           <div className="card-content">
-            <h3>${(summary.totalAllowances || 0).toLocaleString()}</h3>
+            <h3>{formatCurrency(summary.totalAllowances || 0)}</h3>
             <p>Total Allowances</p>
           </div>
         </div>
         
         <div className="summary-card">
-          <div className="card-icon">
-            <FiDollarSign />
-          </div>
+          <div className="card-icon">Rs</div>
           <div className="card-content">
-            <h3>${(summary.totalDeductions || 0).toLocaleString()}</h3>
+            <h3>{formatCurrency(summary.totalDeductions || 0)}</h3>
             <p>Total Deductions</p>
           </div>
         </div>
+      </div>
+
+      {/* Debug Section */}
+      <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+        <h4>Debug Info</h4>
+        <p>Summary Data: {JSON.stringify(summary, null, 2)}</p>
+        <Button 
+          variant="secondary" 
+          icon={<FiRefreshCw />}
+          onClick={async () => {
+            try {
+              const response = await api.get('/payroll/debug');
+              console.log('Debug response:', response.data);
+              alert('Check console for debug info');
+            } catch (error) {
+              console.error('Debug error:', error);
+              console.error('Debug error response:', error.response?.data);
+              console.error('Debug error status:', error.response?.status);
+              console.error('Debug error headers:', error.response?.headers);
+              alert(`Debug failed (${error.response?.status || 'unknown'}) - check console`);
+            }
+          }}
+        >
+          Debug Payroll Data
+        </Button>
       </div>
 
       {/* Department Breakdown */}
@@ -150,8 +186,8 @@ const Payroll = () => {
               <div key={dept} className="department-card">
                 <h4>{dept}</h4>
                 <p>Employees: {data.count}</p>
-                <p>Total Pay: ${data.totalNetPay?.toLocaleString() || 0}</p>
-                <p>Average: ${(data.totalNetPay / data.count)?.toFixed(2) || 0}</p>
+                <p>Total Pay: {formatCurrency(data.totalNetPay || 0)}</p>
+                <p>Average: {formatCurrency((data.totalNetPay / data.count) || 0)}</p>
               </div>
             ))}
           </div>
@@ -162,7 +198,7 @@ const Payroll = () => {
       <div className="payroll-list">
         <div className="list-header">
           <h3>Recent Payrolls</h3>
-          <div className="header-actions">
+          <div className="header-actions" style={{ display: 'flex', gap: 12 }}>
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
@@ -210,40 +246,26 @@ const Payroll = () => {
               </thead>
               <tbody>
                 {payrolls.map((payroll) => (
-                  <tr key={payroll._id}>
+                  <tr key={payroll.id || payroll._id}>
                     <td>
                       <div className="employee-info">
-                        <div className="employee-name">{payroll.employeeId?.fullName}</div>
-                        <div className="employee-id">{payroll.employeeId?.employeeId}</div>
+                        <div className="employee-name">{payroll.employeeId?.fullName || payroll.employeeName || payroll.employeeId || 'Unknown'}</div>
                       </div>
                     </td>
                     <td>{payroll.month}/{payroll.year}</td>
-                    <td>${payroll.basicSalary?.toFixed(2)}</td>
-                    <td>${payroll.totalAllowances?.toFixed(2)}</td>
-                    <td>${payroll.totalDeductions?.toFixed(2)}</td>
-                    <td className="net-pay">${payroll.netPay?.toFixed(2)}</td>
+                    <td>{formatCurrency(payroll.basicSalary)}</td>
+                    <td>{formatCurrency(payroll.totalAllowances)}</td>
+                    <td>{formatCurrency(payroll.totalDeductions)}</td>
+                    <td className="net-pay">{formatCurrency(payroll.netPay)}</td>
                     <td>
                       <span className={`status-badge ${payroll.status}`}>
                         {payroll.status}
                       </span>
                     </td>
                     <td>
-                      <div className="action-buttons">
-                        <button
-                          className="btn btn-info btn-sm"
-                          onClick={() => downloadSalarySlip(payroll._id)}
-                          title="Download Salary Slip"
-                        >
-                          <FiDownload />
-                        </button>
-                        <button
-                          className="btn btn-success btn-sm"
-                          onClick={() => updatePayrollStatus(payroll._id, 'paid')}
-                          disabled={payroll.status === 'paid'}
-                          title="Mark as Paid"
-                        >
-                          <FiCheck />
-                        </button>
+                      <div className="action-buttons" style={{ display: 'flex', gap: 8 }}>
+                        <Button variant="secondary" onClick={() => downloadSalarySlip(payroll.id || payroll._id)} icon={<FiDownload />} />
+                        <Button variant="primary" onClick={() => updatePayrollStatus(payroll.id || payroll._id, 'paid')} disabled={payroll.status === 'paid'} icon={<FiCheck />} />
                       </div>
                     </td>
                   </tr>
@@ -255,22 +277,22 @@ const Payroll = () => {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="pagination">
-            <button
-              className="btn btn-secondary"
+          <div className="pagination" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <Button
+              variant="secondary"
               disabled={currentPage === 1}
               onClick={() => setCurrentPage(prev => prev - 1)}
             >
               Previous
-            </button>
+            </Button>
             <span>Page {currentPage} of {totalPages}</span>
-            <button
-              className="btn btn-secondary"
+            <Button
+              variant="secondary"
               disabled={currentPage === totalPages}
               onClick={() => setCurrentPage(prev => prev + 1)}
             >
               Next
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -315,23 +337,15 @@ const Payroll = () => {
             </div>
           </div>
           
-          <button
-            className="btn btn-primary generate-btn"
+          <Button
+            className="generate-btn"
             onClick={generatePayroll}
             disabled={generating}
+            variant="primary"
+            icon={generating ? <FiRefreshCw className="spinning" /> : <FiCalendar />}
           >
-            {generating ? (
-              <>
-                <FiRefreshCw className="spinning" />
-                Generating Payroll...
-              </>
-            ) : (
-              <>
-                <FiCalendar />
-                Generate Payroll for {moment(selectedMonth).format('MMMM YYYY')}
-              </>
-            )}
-          </button>
+            {generating ? 'Generating Payroll...' : `Generate Payroll for ${moment(selectedMonth).format('MMMM YYYY')}`}
+          </Button>
         </div>
       </div>
 
@@ -351,10 +365,10 @@ const Payroll = () => {
             </thead>
             <tbody>
               {payrolls.map((payroll) => (
-                <tr key={payroll._id}>
-                  <td>{payroll.employeeId?.fullName}</td>
+                <tr key={payroll.id || payroll._id}>
+                  <td>{payroll.employeeId?.fullName || payroll.employeeName || payroll.employeeId || 'Unknown'}</td>
                   <td>{payroll.month}/{payroll.year}</td>
-                  <td className="net-pay">${payroll.netPay?.toFixed(2)}</td>
+                  <td className="net-pay">{formatCurrency(payroll.netPay)}</td>
                   <td>
                     <span className={`status-badge ${payroll.status}`}>
                       {payroll.status}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { FiHome, FiUsers, FiClock, FiFileText, FiBarChart2, FiSearch, FiDownload, FiCheck, FiX, FiEdit, FiTrash2, FiEye, FiCalendar, FiUser, FiTrendingUp, FiTrendingDown, FiBell, FiDollarSign } from 'react-icons/fi';
-import axios from 'axios';
+import { FiHome, FiUsers, FiClock, FiFileText, FiBarChart2, FiSearch, FiDownload, FiCheck, FiX, FiEdit, FiTrash2, FiEye, FiCalendar, FiUser, FiTrendingUp, FiTrendingDown, FiBell, FiDollarSign, FiRefreshCw } from 'react-icons/fi';
+import api from '../services/api';
 import { toast } from 'react-toastify';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
@@ -9,6 +9,7 @@ import { Reports } from '../components/dashboard';
 // moment.js removed - using native Date methods
 import './AdminDashboard.css';
 import Payroll from './Payroll';
+import Button from '../components/common/Button';
 
 const sidebarItems = [
   { label: 'Dashboard Overview', icon: FiHome, section: 'dashboard' },
@@ -43,6 +44,8 @@ const AdminDashboard = () => {
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [attendanceDetailsOpen, setAttendanceDetailsOpen] = useState(false);
   const [selectedAttendanceRecord, setSelectedAttendanceRecord] = useState(null);
+  const [leaveDetailsOpen, setLeaveDetailsOpen] = useState(false);
+  const [selectedLeaveRecord, setSelectedLeaveRecord] = useState(null);
   
   const { logout } = useAuth();
   const { addNotification, unreadCount, markAllAsRead } = useNotifications();
@@ -55,9 +58,9 @@ const AdminDashboard = () => {
       
       if (activeSection === 'dashboard') {
         const [adminRes, employeesRes, leavesRes] = await Promise.all([
-          axios.get('/api/dashboard/admin'),
-          axios.get('/api/employees?page=1&limit=10'),
-          axios.get('/api/leaves/all?page=1&limit=20&status=pending')
+          api.get('/dashboard/admin'),
+          api.get('/employees?page=1&limit=10'),
+          api.get('/leaves/all?page=1&limit=20&status=pending')
         ]);
 
         const s = adminRes.data?.data?.employeeStats || {};
@@ -69,13 +72,24 @@ const AdminDashboard = () => {
           attendanceRate: s.attendanceRate || 0,
           onLeaveToday: s.onLeaveEmployees || 0
         });
-        setEmployees(employeesRes.data.data.employees);
-        setLeaveRequests(leavesRes.data.data.leaves);
+        setEmployees(employeesRes.data?.data?.employees || []);
+        
+        // Debug: Log the leave requests data for dashboard (normalized to employeeId)
+        console.log('Dashboard leaves API response:', leavesRes.data);
+        console.log('Dashboard leave records:', leavesRes.data?.data?.leaves);
+        if (leavesRes.data?.data?.leaves?.length > 0) {
+          const first = leavesRes.data.data.leaves[0];
+          console.log('First dashboard leave record:', first);
+          console.log('First record employeeName:', first.employeeName);
+          console.log('First record employeeId:', first.employeeId);
+        }
+        
+        setLeaveRequests(leavesRes.data?.data?.leaves || []);
       } else if (activeSection === 'employees') {
         try {
-          const response = await axios.get(`/api/employees?page=${currentPage}&limit=20&search=${searchTerm}&department=${filterDepartment}`);
-          setEmployees(response.data.data.employees);
-          setTotalPages(response.data.data.pagination.totalPages);
+          const response = await api.get(`/employees?page=${currentPage}&limit=20&search=${searchTerm}&department=${filterDepartment}`);
+          setEmployees(response.data?.data?.employees || []);
+          setTotalPages(response.data?.data?.pagination?.totalPages || 1);
         } catch (error) {
           console.error('Error fetching employees:', error);
           toast.error('Failed to load employees data');
@@ -84,9 +98,14 @@ const AdminDashboard = () => {
         }
       } else if (activeSection === 'attendance') {
         try {
-          const response = await axios.get(`/api/attendance/all?page=${currentPage}&limit=20&date=${selectedDate}`);
-          setAttendanceRecords(response.data.data.attendance);
-          setTotalPages(response.data.data.pagination.totalPages);
+          const response = await api.get(`/attendance/all?page=${currentPage}&limit=20&date=${selectedDate}`);
+          console.log('Attendance API response:', response.data);
+          console.log('Attendance records:', response.data?.data?.attendance);
+          if (response.data?.data?.attendance?.length > 0) {
+            console.log('First attendance record:', response.data.data.attendance[0]);
+          }
+          setAttendanceRecords(response.data?.data?.attendance || []);
+          setTotalPages(response.data?.data?.pagination?.totalPages || 1);
         } catch (error) {
           console.error('Error fetching attendance:', error);
           toast.error('Failed to load attendance data');
@@ -95,9 +114,14 @@ const AdminDashboard = () => {
         }
       } else if (activeSection === 'leaves') {
         try {
-          const response = await axios.get(`/api/leaves/all?page=${currentPage}&limit=20&status=${filterStatus}`);
-          setLeaveRequests(response.data.data.leaves);
-          setTotalPages(response.data.data.pagination.totalPages);
+          const response = await api.get(`/leaves/all?page=${currentPage}&limit=20&status=${filterStatus}`);
+          console.log('Leaves API response:', response.data);
+          console.log('Leave records:', response.data?.data?.leaves);
+          if (response.data?.data?.leaves?.length > 0) {
+            console.log('First leave record:', response.data.data.leaves[0]);
+          }
+          setLeaveRequests(response.data?.data?.leaves || []);
+          setTotalPages(response.data?.data?.pagination?.totalPages || 1);
         } catch (error) {
           console.error('Error fetching leaves:', error);
           toast.error('Failed to load leave data');
@@ -146,6 +170,17 @@ const AdminDashboard = () => {
     fetchDashboardData();
   }, [fetchDashboardData]);
 
+  // Lightweight polling to keep data fresh while admin is viewing
+  useEffect(() => {
+    // Poll only on dynamic sections where data changes frequently
+    const shouldPoll = activeSection === 'dashboard' || activeSection === 'leaves' || activeSection === 'employees' || activeSection === 'attendance';
+    if (!shouldPoll) return;
+    const interval = setInterval(() => {
+      fetchDashboardData();
+    }, 30000); // 30s
+    return () => clearInterval(interval);
+  }, [activeSection, fetchDashboardData]);
+
   // Sync internal section state with the URL path (e.g., /admin/leaves → 'leaves')
   useEffect(() => {
     const path = location.pathname || '';
@@ -176,24 +211,25 @@ const AdminDashboard = () => {
   };
 
   const handleApproveLeave = async (leaveId) => {
+    // Optimistic update
+    const previousLeaves = leaveRequests;
+    setLeaveRequests(prev => prev.map(l => l.id === leaveId ? { ...l, status: 'approved' } : l));
     try {
-      const leave = leaveRequests.find(l => l.id === leaveId);
-      await axios.put(`/api/leaves/${leaveId}/approve`, {
-        notes: 'Approved by admin'
-      });
+      const leave = previousLeaves.find(l => l.id === leaveId);
+      await api.put(`/leaves/${leaveId}/approve`, { notes: 'Approved by admin' });
       toast.success('Leave request approved successfully!');
-      
       if (leave) {
         addNotification({
           type: 'leave_approved',
           title: 'Leave Request Approved',
           message: `Your ${leave.leaveType} leave has been approved`,
-          employeeId: leave.userId?.id || leave.userId
+          employeeId: leave.employeeId
         });
       }
-      
       fetchDashboardData();
     } catch (error) {
+      // Rollback on failure
+      setLeaveRequests(previousLeaves);
       console.error('Approve leave error:', error);
       toast.error(error.response?.data?.message || 'Failed to approve leave request');
     }
@@ -203,24 +239,25 @@ const AdminDashboard = () => {
     const reason = prompt('Please provide a reason for rejection:');
     if (!reason) return;
     
+    // Optimistic update
+    const previousLeaves = leaveRequests;
+    setLeaveRequests(prev => prev.map(l => l.id === leaveId ? { ...l, status: 'rejected', rejectionReason: reason } : l));
     try {
-      const leave = leaveRequests.find(l => l.id === leaveId);
-      await axios.put(`/api/leaves/${leaveId}/reject`, {
-        rejectionReason: reason
-      });
+      const leave = previousLeaves.find(l => l.id === leaveId);
+      await api.put(`/leaves/${leaveId}/reject`, { rejectionReason: reason });
       toast.success('Leave request rejected successfully!');
-      
       if (leave) {
         addNotification({
           type: 'leave_rejected',
           title: 'Leave Request Rejected',
           message: `Your ${leave.leaveType} leave has been rejected: ${reason}`,
-          employeeId: leave.userId?.id || leave.userId
+          employeeId: leave.employeeId
         });
       }
-      
       fetchDashboardData();
     } catch (error) {
+      // Rollback on failure
+      setLeaveRequests(previousLeaves);
       console.error('Reject leave error:', error);
       toast.error(error.response?.data?.message || 'Failed to reject leave request');
     }
@@ -244,7 +281,7 @@ const AdminDashboard = () => {
   const handleDeleteEmployee = async (employeeId) => {
     if (window.confirm('Are you sure you want to delete this employee? This action cannot be undone.')) {
       try {
-        await axios.delete(`/api/employees/${employeeId}`);
+        await api.delete(`/employees/${employeeId}`);
         toast.success('Employee deleted successfully');
         fetchDashboardData();
       } catch (error) {
@@ -256,7 +293,7 @@ const AdminDashboard = () => {
   const handleSaveEmployee = async (employeeData) => {
     try {
       if (editingEmployee) {
-        await axios.put(`/api/employees/${editingEmployee.id}`, employeeData);
+        await api.put(`/employees/${editingEmployee.id}`, employeeData);
         toast.success('Employee updated successfully');
       } else {
         // Always use manual creation with admin-set temporary password
@@ -272,7 +309,7 @@ const AdminDashboard = () => {
           address: employeeData.address,
           leaveBalance: employeeData.leaveBalance
         };
-        await axios.post('/api/employees', payload);
+        await api.post('/employees', payload);
         toast.success('Employee created successfully');
       }
       setShowEmployeeModal(false);
@@ -286,7 +323,7 @@ const AdminDashboard = () => {
   const downloadAttendanceReport = async () => {
     try {
       // Align with backend reports endpoint; use the same date for start and end
-      const response = await axios.get(`/api/reports/attendance/csv?startDate=${selectedDate}&endDate=${selectedDate}`, {
+      const response = await api.get(`/reports/attendance/csv?startDate=${selectedDate}&endDate=${selectedDate}`, {
         responseType: 'blob'
       });
       
@@ -309,7 +346,7 @@ const AdminDashboard = () => {
       // Align with backend reports endpoint; export across a wide date range
       const startDate = '1970-01-01';
       const endDate = new Date().toISOString().slice(0, 10);
-      const response = await axios.get(`/api/reports/leaves/csv?startDate=${startDate}&endDate=${endDate}` + (filterStatus ? `&status=${filterStatus}` : ''), {
+      const response = await api.get(`/reports/leaves/csv?startDate=${startDate}&endDate=${endDate}` + (filterStatus ? `&status=${filterStatus}` : ''), {
         responseType: 'blob'
       });
       
@@ -394,28 +431,10 @@ const AdminDashboard = () => {
             {/* Quick Actions */}
             <div className="quick-actions">
               <h3>Quick Actions</h3>
-              <div className="action-buttons">
-                <button 
-                  className="action-btn primary"
-                  onClick={() => handleSidebarClick('leaves')}
-                >
-                  <FiFileText />
-                  <span>Review Leave Requests</span>
-                </button>
-                <button 
-                  className="action-btn success"
-                  onClick={() => handleSidebarClick('attendance')}
-                >
-                  <FiClock />
-                  <span>View Attendance</span>
-                </button>
-                <button 
-                  className="action-btn info"
-                  onClick={() => handleSidebarClick('employees')}
-                >
-                  <FiUsers />
-                  <span>Manage Employees</span>
-                </button>
+              <div className="action-buttons" style={{ display: 'flex', gap: 12 }}>
+                <Button variant="primary" onClick={() => handleSidebarClick('leaves')} icon={<FiFileText />}>Review Leave Requests</Button>
+                <Button variant="primary" onClick={() => handleSidebarClick('attendance')} icon={<FiClock />}>View Attendance</Button>
+                <Button variant="secondary" onClick={() => handleSidebarClick('employees')} icon={<FiUsers />}>Manage Employees</Button>
               </div>
             </div>
 
@@ -439,7 +458,7 @@ const AdminDashboard = () => {
                     </div>
                     <div className="activity-content">
                       <div className="activity-title">
-                        {leave.userId?.fullName || 'Unknown Employee'} requested {leave.leaveType} leave
+                        {leave.employeeName || 'Unknown Employee'} requested {leave.leaveType} leave
                       </div>
                       <div className="activity-details">
                         {new Date(leave.fromDate).toLocaleDateString('en-US', { month: 'short', day: '2-digit' })} - {new Date(leave.toDate).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })} • {leave.totalDays} days
@@ -462,7 +481,7 @@ const AdminDashboard = () => {
           <div className="employees-section">
             <div className="section-header">
               <h3>Employee Management</h3>
-              <div className="header-actions">
+              <div className="header-actions" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                 <div className="search-container">
                   <FiSearch className="search-icon" />
                   <input
@@ -473,6 +492,7 @@ const AdminDashboard = () => {
                     className="search-input"
                   />
                 </div>
+                <Button variant="secondary" onClick={fetchDashboardData}>Refresh</Button>
                 <select
                   value={filterDepartment}
                   onChange={(e) => setFilterDepartment(e.target.value)}
@@ -483,16 +503,7 @@ const AdminDashboard = () => {
                   <option value="Operation">Operation</option>
                   <option value="Management">Management</option>
                 </select>
-                <button 
-                  className="btn btn-primary"
-                  onClick={() => {
-                    setEditingEmployee(null);
-                    setShowEmployeeModal(true);
-                  }}
-                >
-                  <FiUser />
-                  <span>Add Employee</span>
-                </button>
+                <Button variant="primary" onClick={() => { setEditingEmployee(null); setShowEmployeeModal(true); }} icon={<FiUser />}>Add Employee</Button>
               </div>
             </div>
 
@@ -593,21 +604,9 @@ const AdminDashboard = () => {
                             </span>
                           </td>
                           <td>
-                            <div className="action-buttons">
-                              <button
-                                className="btn btn-info btn-sm"
-                                onClick={() => handleEditEmployee(employee)}
-                                title="Edit Employee"
-                              >
-                                <FiEdit />
-                              </button>
-                              <button
-                                className="btn btn-danger btn-sm"
-                                onClick={() => handleDeleteEmployee(employee.id)}
-                                title="Delete Employee"
-                              >
-                                <FiTrash2 />
-                              </button>
+                            <div className="action-buttons" style={{ display: 'flex', gap: 8 }}>
+                              <Button variant="secondary" onClick={() => handleEditEmployee(employee)} icon={<FiEdit />} />
+                              <Button variant="danger" onClick={() => handleDeleteEmployee(employee.id)} icon={<FiTrash2 />} />
                             </div>
                           </td>
                         </tr>
@@ -617,24 +616,24 @@ const AdminDashboard = () => {
                   
                   {/* Pagination */}
                   {totalPages > 1 && (
-                    <div className="pagination">
-                      <button 
-                        className="btn btn-secondary btn-sm"
+                    <div className="pagination" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                      <Button 
+                        variant="secondary"
                         disabled={currentPage === 1}
                         onClick={() => setCurrentPage(prev => prev - 1)}
                       >
                         Previous
-                      </button>
+                      </Button>
                       <span className="page-info">
                         Page {currentPage} of {totalPages}
                       </span>
-                      <button 
-                        className="btn btn-secondary btn-sm"
+                      <Button 
+                        variant="secondary"
                         disabled={currentPage === totalPages}
                         onClick={() => setCurrentPage(prev => prev + 1)}
                       >
                         Next
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </>
@@ -668,10 +667,8 @@ const AdminDashboard = () => {
                     className="search-input"
                   />
                 </div>
-                <button className="btn btn-success" onClick={downloadAttendanceReport}>
-                  <FiDownload />
-                  <span>Export Report</span>
-                </button>
+                <Button variant="secondary" onClick={fetchDashboardData}>Refresh</Button>
+                <Button variant="primary" onClick={downloadAttendanceReport} icon={<FiDownload />}>Export Report</Button>
               </div>
             </div>
             
@@ -689,70 +686,71 @@ const AdminDashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {attendanceRecords.map((record) => (
-                    <tr key={record._id}>
-                      <td>
-                        <div className="employee-info">
-                          <div className="employee-avatar">
-                            <FiUser />
+                  {attendanceRecords.map((record) => {
+                    console.log('Rendering attendance record:', record);
+                    return (
+                      <tr key={record._id}>
+                        <td>
+                          <div className="employee-info">
+                            <div className="employee-avatar">
+                              <FiUser />
+                            </div>
+                            <div>
+                              <div className="employee-name">{record.employeeName || 'Unknown'}</div>
+                            </div>
                           </div>
-                          <div>
-                            <div className="employee-name">{record.userId?.fullName || 'Unknown'}</div>
-                            <div className="employee-email">{record.userId?.email || 'Unknown'}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td>{new Date(record.date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}</td>
-                      <td>
-                        {record.checkIn?.time ? new Date(record.checkIn.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '-'}
-                      </td>
-                      <td>
-                        {record.checkOut?.time ? new Date(record.checkOut.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '-'}
-                      </td>
-                      <td>
-                        <span className="hours-display">
-                          {record.totalHours || 0}h
-                        </span>
-                      </td>
-                      <td>
-                        <span className={`badge badge-${record.status === 'present' ? 'success' : 'warning'}`}>
-                          {record.status}
-                        </span>
-                      </td>
-                      <td>
-                        <button
-                          className="btn btn-info btn-sm"
-                          title="View Details"
-                          onClick={() => openAttendanceDetails(record)}
-                        >
-                          <FiEye />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td>{new Date(record.date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}</td>
+                        <td>
+                          {record.checkIn?.time ? new Date(record.checkIn.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '-'}
+                        </td>
+                        <td>
+                          {record.checkOut?.time ? new Date(record.checkOut.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '-'}
+                        </td>
+                        <td>
+                          <span className="hours-display">
+                            {record.totalHours || 0}h
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`badge badge-${record.status === 'present' ? 'success' : 'warning'}`}>
+                            {record.status}
+                          </span>
+                        </td>
+                        <td>
+                          <Button
+                            variant="secondary"
+                            title="View Details"
+                            onClick={() => openAttendanceDetails(record)}
+                            icon={<FiEye />}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="pagination">
-                  <button 
-                    className="btn btn-secondary btn-sm"
+                <div className="pagination" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <Button 
+                    variant="secondary"
                     disabled={currentPage === 1}
                     onClick={() => setCurrentPage(prev => prev - 1)}
                   >
                     Previous
-                  </button>
+                  </Button>
                   <span className="page-info">
                     Page {currentPage} of {totalPages}
                   </span>
-                  <button 
-                    className="btn btn-secondary btn-sm"
+                  <Button 
+                    variant="secondary"
                     disabled={currentPage === totalPages}
                     onClick={() => setCurrentPage(prev => prev + 1)}
                   >
                     Next
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
@@ -764,7 +762,7 @@ const AdminDashboard = () => {
           <div className="leaves-section">
             <div className="section-header">
               <h3>Leave Management</h3>
-              <div className="header-actions">
+              <div className="header-actions" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                 <select
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
@@ -775,10 +773,8 @@ const AdminDashboard = () => {
                   <option value="approved">Approved</option>
                   <option value="rejected">Rejected</option>
                 </select>
-                <button className="btn btn-success" onClick={downloadLeaveReport}>
-                  <FiDownload />
-                  <span>Export Report</span>
-                </button>
+                <Button variant="secondary" onClick={fetchDashboardData}>Refresh</Button>
+                <Button variant="primary" onClick={downloadLeaveReport} icon={<FiDownload />}>Export Report</Button>
               </div>
             </div>
             
@@ -796,16 +792,17 @@ const AdminDashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {leaveRequests.map((leave) => (
-                    <tr key={leave.id}>
+                  {leaveRequests.map((leave) => {
+                    console.log('Rendering leave record:', leave);
+                    return (
+                      <tr key={leave.id}>
                       <td>
                         <div className="employee-info">
                           <div className="employee-avatar">
                             <FiUser />
                           </div>
                           <div>
-                            <div className="employee-name">{leave.userId?.fullName || 'Unknown'}</div>
-                            <div className="employee-email">{leave.userId?.email || 'Unknown'}</div>
+                            <div className="employee-name">{leave.employeeName || 'Unknown'}</div>
                           </div>
                         </div>
                       </td>
@@ -847,13 +844,18 @@ const AdminDashboard = () => {
                           <button
                             className="btn btn-info btn-sm"
                             title="View Details"
+                            onClick={() => {
+                              setSelectedLeaveRecord(leave);
+                              setLeaveDetailsOpen(true);
+                            }}
                           >
                             <FiEye />
                           </button>
                         )}
                       </td>
                     </tr>
-                  ))}
+                  );
+                  })}
                 </tbody>
               </table>
               
@@ -943,8 +945,36 @@ const AdminDashboard = () => {
               <p><strong>Total Hours:</strong> {selectedAttendanceRecord.totalHours || 0}h</p>
               <p><strong>Status:</strong> {selectedAttendanceRecord.status}</p>
             </div>
-            <div className="modal-actions">
-              <button className="btn btn-primary" onClick={closeAttendanceDetails}>Close</button>
+            <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Button variant="neutral" onClick={closeAttendanceDetails}>Close</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {leaveDetailsOpen && selectedLeaveRecord && (
+        <div className="modal-overlay" onClick={() => setLeaveDetailsOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Leave Details</h3>
+              <button className="modal-close" onClick={() => setLeaveDetailsOpen(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <p><strong>Employee:</strong> {selectedLeaveRecord.employeeName || 'Unknown'} ({selectedLeaveRecord.employeeId || ''})</p>
+              <p><strong>Type:</strong> {selectedLeaveRecord.leaveType}</p>
+              <p><strong>From:</strong> {new Date(selectedLeaveRecord.fromDate).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}</p>
+              <p><strong>To:</strong> {new Date(selectedLeaveRecord.toDate).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}</p>
+              <p><strong>Days:</strong> {selectedLeaveRecord.totalDays}</p>
+              <p><strong>Status:</strong> {selectedLeaveRecord.status}</p>
+              {selectedLeaveRecord.reason && (
+                <p><strong>Reason:</strong> {selectedLeaveRecord.reason}</p>
+              )}
+              {selectedLeaveRecord.rejectionReason && (
+                <p><strong>Rejection Reason:</strong> {selectedLeaveRecord.rejectionReason}</p>
+              )}
+            </div>
+            <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Button variant="neutral" onClick={() => setLeaveDetailsOpen(false)}>Close</Button>
             </div>
           </div>
         </div>

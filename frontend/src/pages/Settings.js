@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import Button from '../components/common/Button';
+import api from '../services/api';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -46,7 +47,7 @@ const Settings = () => {
     }
     setSubmitting(true);
     try {
-      await axios.post('/api/auth/change-password', {
+      await api.post('/auth/change-password', {
         currentPassword: passwordData.currentPassword,
         newPassword: passwordData.newPassword
       });
@@ -180,9 +181,9 @@ const Settings = () => {
               minLength={6}
             />
           </div>
-          <button type="submit" className="btn-primary" disabled={submitting}>
+          <Button type="submit" variant="accent" disabled={submitting}>
             {submitting ? 'Changing...' : 'Change Password'}
-          </button>
+          </Button>
         </form>
       </div>
     </div>

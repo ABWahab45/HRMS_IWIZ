@@ -11,6 +11,8 @@ import {
   FiUser
 } from 'react-icons/fi';
 import './EmployeeManagement.css';
+import Button from '../common/Button';
+import { formatCurrency } from '../../utils/helpers';
 
 const EmployeeManagement = () => {
   const [employees, setEmployees] = useState([]);
@@ -24,6 +26,7 @@ const EmployeeManagement = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [payrollInfo, setPayrollInfo] = useState({ loading: false, hasCurrentMonth: false, lastPayroll: null, count: 0 });
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -108,7 +111,7 @@ const EmployeeManagement = () => {
   const handleEditEmployee = async (e) => {
     e.preventDefault();
     try {
-      await axios.put(`/api/employees/${selectedEmployee._id}`, formData);
+      await axios.put(`/api/employees/${selectedEmployee.id}`, formData);
       toast.success('Employee updated successfully!');
       setShowEditModal(false);
       setSelectedEmployee(null);
@@ -153,6 +156,22 @@ const EmployeeManagement = () => {
   const handleViewEmployee = (employee) => {
     setSelectedEmployee(employee);
     setShowViewModal(true);
+    // Load payroll summary for the employee
+    (async () => {
+      try {
+        setPayrollInfo(prev => ({ ...prev, loading: true }));
+        const resp = await axios.get(`/api/payroll/${employee.id}?page=1&limit=12`);
+        const payrolls = resp?.data?.data?.payrolls || [];
+        const now = new Date();
+        const currentMonth = now.getMonth() + 1;
+        const currentYear = now.getFullYear();
+        const hasCurrentMonth = payrolls.some(p => Number(p.month) === currentMonth && Number(p.year) === currentYear);
+        const lastPayroll = payrolls[0] || null; // API already sorts year desc, month desc
+        setPayrollInfo({ loading: false, hasCurrentMonth, lastPayroll, count: payrolls.length });
+      } catch (e) {
+        setPayrollInfo({ loading: false, hasCurrentMonth: false, lastPayroll: null, count: 0 });
+      }
+    })();
   };
 
   const handleEditClick = (employee) => {
@@ -216,15 +235,9 @@ const EmployeeManagement = () => {
           <h1 className="page-title">Employee Management</h1>
           <p className="page-subtitle">Manage employee information and records</p>
         </div>
-        <div className="header-actions">
-          <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
-            <FiUserPlus />
-            <span>Add Employee</span>
-          </button>
-          <button className="btn btn-secondary" onClick={downloadEmployeeReport}>
-            <FiDownload />
-            <span>Download Report</span>
-          </button>
+        <div className="header-actions" style={{ display: 'flex', gap: 12 }}>
+          <Button variant="primary" onClick={() => setShowAddModal(true)} icon={<FiUserPlus />}>Add Employee</Button>
+          <Button variant="secondary" onClick={downloadEmployeeReport} icon={<FiDownload />}>Download Report</Button>
         </div>
       </div>
 
@@ -284,7 +297,7 @@ const EmployeeManagement = () => {
           </thead>
           <tbody>
             {employees.map((employee) => (
-              <tr key={employee._id}>
+              <tr key={employee.id}>
                 <td>{employee.employeeId}</td>
                 <td>
                   <div className="employee-info">
@@ -310,38 +323,32 @@ const EmployeeManagement = () => {
                   </span>
                 </td>
                 <td>
-                  <div className="action-buttons">
-                    <button
-                      className="btn-icon btn-view"
+                  <div className="action-buttons" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <Button
+                      variant="secondary"
                       onClick={() => handleViewEmployee(employee)}
-                      title="View Details"
-                    >
-                      <FiEye />
-                    </button>
-                    <button
-                      className="btn-icon btn-edit"
+                      icon={<FiEye />}
+                      title="View"
+                    />
+                    <Button
+                      variant="secondary"
                       onClick={() => handleEditClick(employee)}
-                      title="Edit Employee"
-                    >
-                      <FiEdit />
-                    </button>
-                    <button
-                      className="btn-icon btn-delete"
-                      onClick={() => handleDeleteEmployee(employee._id)}
-                      title="Delete Employee"
-                    >
-                      <FiTrash2 />
-                    </button>
-                    <button
-                      className="btn-icon btn-edit"
-                      onClick={() => handleResetPassword(employee._id)}
-                      title="Reset Password"
+                      icon={<FiEdit />}
+                    />
+                    <Button
+                      variant="danger"
+                      onClick={() => handleDeleteEmployee(employee.id)}
+                      icon={<FiTrash2 />}
+                    />
+                    <Button
+                      variant="accent"
+                      onClick={() => handleResetPassword(employee.id)}
                     >
                       🔒
-                    </button>
+                    </Button>
                     <select
                       value={employee.status}
-                      onChange={(e) => handleStatusChange(employee._id, e.target.value)}
+                      onChange={(e) => handleStatusChange(employee.id, e.target.value)}
                       className="status-select"
                     >
                       {statuses.map(status => (
@@ -358,24 +365,24 @@ const EmployeeManagement = () => {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="pagination">
-          <button
-            className="btn btn-secondary"
+        <div className="pagination" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <Button
+            variant="secondary"
             onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
             disabled={currentPage === 1}
           >
             Previous
-          </button>
+          </Button>
           <span className="page-info">
             Page {currentPage} of {totalPages}
           </span>
-          <button
-            className="btn btn-secondary"
+          <Button
+            variant="secondary"
             onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
             disabled={currentPage === totalPages}
           >
             Next
-          </button>
+          </Button>
         </div>
       )}
 
@@ -504,13 +511,9 @@ const EmployeeManagement = () => {
                 </div>
               </div>
               
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowAddModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  {autoGeneratePassword ? 'Add & Email Credentials' : 'Add Employee'}
-                </button>
+              <div className="modal-footer" style={{ display: 'flex', gap: 12 }}>
+                <Button type="button" variant="neutral" onClick={() => setShowAddModal(false)}>Cancel</Button>
+                <Button type="submit" variant="primary">{autoGeneratePassword ? 'Add & Email Credentials' : 'Add Employee'}</Button>
               </div>
             </form>
           </div>
@@ -605,13 +608,9 @@ const EmployeeManagement = () => {
                 </div>
               </div>
               
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowEditModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  Update Employee
-                </button>
+              <div className="modal-footer" style={{ display: 'flex', gap: 12 }}>
+                <Button type="button" variant="neutral" onClick={() => setShowEditModal(false)}>Cancel</Button>
+                <Button type="submit" variant="primary">Update Employee</Button>
               </div>
             </form>
           </div>
@@ -666,7 +665,7 @@ const EmployeeManagement = () => {
                   </div>
                   <div className="detail-item">
                     <label>Salary:</label>
-                    <span>${selectedEmployee.salary}</span>
+                    <span>{formatCurrency(selectedEmployee.salary)}</span>
                   </div>
                   <div className="detail-item">
                     <label>Leave Balance:</label>
@@ -677,6 +676,26 @@ const EmployeeManagement = () => {
                     <span className={`badge badge-${selectedEmployee.status === 'active' ? 'success' : selectedEmployee.status === 'inactive' ? 'warning' : 'danger'}`}>
                       {selectedEmployee.status}
                     </span>
+                  </div>
+                  <div className="detail-item" style={{ gridColumn: '1 / -1' }}>
+                    <label>Payroll Summary:</label>
+                    {payrollInfo.loading ? (
+                      <span>Loading...</span>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                        <span>
+                          Current Month Generated: <strong>{payrollInfo.hasCurrentMonth ? 'Yes' : 'No'}</strong>
+                        </span>
+                        <span>
+                          Total Payroll Records: <strong>{payrollInfo.count}</strong>
+                        </span>
+                        {payrollInfo.lastPayroll && (
+                          <span>
+                            Last Payroll: <strong>{payrollInfo.lastPayroll.month}/{payrollInfo.lastPayroll.year}</strong> • Net Pay: <strong>{formatCurrency(payrollInfo.lastPayroll.netPay)}</strong> • Status: <span className={`status-badge ${payrollInfo.lastPayroll.status}`}>{payrollInfo.lastPayroll.status}</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

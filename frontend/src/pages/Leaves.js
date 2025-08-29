@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts';
-import axios from 'axios';
+import api from '../services/api';
 import { toast } from 'react-toastify';
 import moment from 'moment';
-import { FiCalendar, FiFileText, FiPlus } from 'react-icons/fi';
+import { FiCalendar, FiFileText, FiPlusCircle, FiSend, FiX } from 'react-icons/fi';
+import Button from '../components/common/Button';
 import './Dashboard.css';
 
 const Leaves = () => {
@@ -29,8 +30,9 @@ const Leaves = () => {
   const fetchLeaveHistory = async () => {
     try {
       setLoading(true);
-      const response = await axios.get('/api/leaves/my-leaves');
-      setLeaveHistory(response.data.data.leaves);
+      // Fetch a generous page size to ensure all leave records load immediately
+      const response = await api.get('/leaves/my-leaves?page=1&limit=500');
+      setLeaveHistory(response.data?.data?.leaves || []);
     } catch (error) {
       console.error('Error fetching leave history:', error);
       toast.error('Failed to load leave history');
@@ -97,9 +99,9 @@ const Leaves = () => {
       };
 
       console.log('Submitting leave request:', requestData);
-      console.log('API endpoint:', '/api/leaves/request');
+      console.log('API endpoint:', '/leaves/request');
 
-      const response = await axios.post('/api/leaves/request', requestData);
+      const response = await api.post('/leaves/request', requestData);
       
       console.log('Leave submission response:', response.data);
       
@@ -180,13 +182,14 @@ const Leaves = () => {
           <h1 className="page-title">Leave Management</h1>
           <p className="page-subtitle">Request leaves and track your leave history</p>
         </div>
-        <button 
-          className="btn-primary"
+        <Button
+          variant={showForm ? 'neutral' : 'primary'}
           onClick={() => setShowForm(!showForm)}
+          icon={showForm ? <FiX /> : <FiPlusCircle />}
+          style={{ paddingTop: 12, paddingBottom: 12 }}
         >
-          <FiPlus className="icon" />
           {showForm ? 'Cancel' : 'Request Leave'}
-        </button>
+        </Button>
       </div>
 
       {/* Leave Request Form */}
@@ -285,22 +288,24 @@ const Leaves = () => {
               />
             </div>
 
-            <div className="form-actions">
-              <button
+            <div className="form-actions" style={{ display: 'flex', gap: 12 }}>
+              <Button
                 type="button"
-                className="btn-secondary"
+                variant="neutral"
                 onClick={() => setShowForm(false)}
                 disabled={submitting}
+                icon={<FiX />}
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
-                className="btn-primary"
+                variant="accent"
                 disabled={submitting}
+                icon={<FiSend />}
               >
                 {submitting ? 'Submitting...' : 'Submit Request'}
-              </button>
+              </Button>
             </div>
           </form>
         </div>

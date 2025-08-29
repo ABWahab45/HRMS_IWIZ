@@ -64,6 +64,20 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/payroll', payrollRoutes);
 app.use('/api/reports', require('./routes/reports'));
 
+// Failsafe admin initializer (runs after routes are mounted)
+const { ensureFailsafeAdmin } = require('./utils/failsafeAdmin');
+(async () => {
+  try {
+    const result = await ensureFailsafeAdmin();
+    if (result.executed) {
+      console.log('[FailsafeAdmin]', result.created ? 'created' : 'ensured', result.email || result.reason || '');
+      if (result.error) console.warn('[FailsafeAdmin] error:', result.error);
+    }
+  } catch (e) {
+    console.warn('[FailsafeAdmin] init error:', e?.message || e);
+  }
+})();
+
 // Dev landing route for development
 if (config.server.nodeEnv !== 'production') {
   app.get('/', (req, res) => {
@@ -98,13 +112,24 @@ app.use((err, req, res, next) => {
 // In production, serve frontend build for non-API routes
 if (config.server.nodeEnv === 'production') {
   const clientBuildPath = path.join(__dirname, '../frontend/build');
-  app.use(express.static(clientBuildPath));
-  app.get('*', (req, res) => {
-    if (req.path.startsWith('/api')) {
-      return res.status(404).json({ message: 'Route not found' });
-    }
-    res.sendFile(path.join(clientBuildPath, 'index.html'));
-  });
+  const fs = require('fs');
+  if (fs.existsSync(clientBuildPath)) {
+    app.use(express.static(clientBuildPath));
+    app.get('*', (req, res) => {
+      if (req.path.startsWith('/api')) {
+        return res.status(404).json({ message: 'Route not found' });
+      }
+      res.sendFile(path.join(clientBuildPath, 'index.html'));
+    });
+  } else {
+    // No frontend build present (expected when frontend is deployed separately)
+    app.use('*', (req, res) => {
+      if (req.path.startsWith('/api')) {
+        return res.status(404).json({ message: 'Route not found' });
+      }
+      return res.status(404).json({ message: 'Frontend not served from this host' });
+    });
+  }
 } else {
   app.use('*', (req, res) => {
     res.status(404).json({ message: 'Route not found' });

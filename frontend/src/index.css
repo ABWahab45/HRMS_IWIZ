@@ -4,24 +4,24 @@
 
 /* Global CSS Variables */
 :root {
-  /* Color Palette */
-  --primary-color: #6366f1;
-  --primary-dark: #4f46e5;
-  --primary-light: #818cf8;
-  --secondary-color: #8b5cf6;
-  --accent-color: #ec4899;
+  /* IWIZ HRMS Brand Palette */
+  --primary-color: #4A90E2;        /* Blue */
+  --primary-dark: #2C6FB5;         /* Darker blue */
+  --primary-light: #74B3F0;        /* Lighter blue */
+  --secondary-color: #50E3C2;      /* Teal/Green */
+  --accent-color: #F5A623;         /* Orange */
   
   /* Background Colors */
-  --bg-primary: #ffffff;
-  --bg-secondary: #f8fafc;
-  --bg-dark: #1e293b;
-  --bg-darker: #0f172a;
+  --bg-primary: #FFFFFF;           /* Cards */
+  --bg-secondary: #F4F6F8;         /* Dashboard background */
+  --bg-dark: #1E1E2F;              /* Sidebar/header dark */
+  --bg-darker: #161623;            /* Darker variant */
   
   /* Text Colors */
-  --text-primary: #1e293b;
-  --text-secondary: #64748b;
-  --text-light: #94a3b8;
-  --text-white: #ffffff;
+  --text-primary: #2C3E50;         /* Dark text */
+  --text-secondary: #9BA3AF;       /* Secondary text/icons */
+  --text-light: #C0C7D2;           /* Muted */
+  --text-white: #FFFFFF;
   
   /* Border Colors */
   --border-light: #e2e8f0;
@@ -29,10 +29,10 @@
   --border-dark: #94a3b8;
   
   /* Status Colors */
-  --success-color: #10b981;
-  --warning-color: #f59e0b;
-  --error-color: #ef4444;
-  --info-color: #3b82f6;
+  --success-color: #50E3C2;
+  --warning-color: #F5A623;
+  --error-color: #FF6584;
+  --info-color: #4A90E2;
   
   /* Spacing */
   --spacing-xs: 0.25rem;

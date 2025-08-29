@@ -17,7 +17,25 @@ router.get('/employees', async (req, res) => {
     const doc = new PDFDocument();
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename=employee-report.pdf');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Pragma', 'no-cache');
+    
+    // Pipe PDF to response
     doc.pipe(res);
+    
+    // Handle PDF errors
+    doc.on('error', (error) => {
+      console.error('PDF generation error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ message: 'PDF generation failed' });
+      }
+    });
+    
+    // Handle response errors
+    res.on('error', (error) => {
+      console.error('Response error during PDF generation:', error);
+      doc.destroy();
+    });
 
     doc.fontSize(24).text('Employee Report', { align: 'center' });
     doc.moveDown();
@@ -37,7 +55,22 @@ router.get('/employees', async (req, res) => {
       doc.moveDown(0.5);
     });
 
+    // Finalize PDF
     doc.end();
+    
+    // Ensure response is properly closed
+    res.on('finish', () => {
+      console.log('PDF report generated successfully');
+    });
+    
+    res.on('error', (error) => {
+      console.error('PDF report error:', error);
+    });
+    
+    // Handle stream end
+    doc.on('end', () => {
+      console.log('PDF stream ended successfully');
+    });
   } catch (error) {
     console.error('Error generating employee report:', error);
     res.status(500).json({ message: 'Failed to generate employee report' });
@@ -56,16 +89,51 @@ router.get('/attendance', async (req, res) => {
       date: { $gte: new Date(startDate), $lte: new Date(endDate) }
     }).populate('userId', 'fullName employeeId department');
 
-    const doc = new PDFDocument();
+    const doc = new PDFDocument({ size: 'A4', margin: 40 });
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=attendance-report-${startDate}-to-${endDate}.pdf`);
+    // Sanitize filename to prevent issues
+    const sanitizedStartDate = startDate.replace(/[^a-zA-Z0-9]/g, '-');
+    const sanitizedEndDate = endDate.replace(/[^a-zA-Z0-9]/g, '-');
+    res.setHeader('Content-Disposition', `attachment; filename=attendance-report-${sanitizedStartDate}-to-${sanitizedEndDate}.pdf`);
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Pragma', 'no-cache');
+    
+    // Pipe PDF to response
     doc.pipe(res);
+    
+    // Handle PDF errors
+    doc.on('error', (error) => {
+      console.error('PDF generation error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ message: 'PDF generation failed' });
+      }
+    });
+    
+    // Handle response errors
+    res.on('error', (error) => {
+      console.error('Response error during PDF generation:', error);
+      doc.destroy();
+    });
 
-    doc.fontSize(24).text('Attendance Report', { align: 'center' });
-    doc.moveDown();
-    doc.fontSize(12).text(`Period: ${startDate} to ${endDate}`, { align: 'center' });
-    doc.fontSize(12).text(`Generated on: ${new Date().toLocaleDateString()}`, { align: 'center' });
+    // Header with brand bar, optional logo, and title
+    doc.rect(doc.page.margins.left, doc.y, doc.page.width - doc.page.margins.left - doc.page.margins.right, 28)
+      .fill('#4A90E2');
+    const fs = require('fs');
+    const path = require('path');
+    const logoPath = path.join(__dirname, '../public/logo.png');
+    let x = doc.page.margins.left + 12;
+    try {
+      if (fs.existsSync(logoPath)) {
+        doc.image(logoPath, x, doc.y - 20, { width: 24, height: 24 });
+        x += 32;
+      }
+    } catch (_) {}
+    doc.fill('#FFFFFF').fontSize(14).text('IWIZ HRMS Attendance Report', x, doc.y - 22, { align: 'left' });
     doc.moveDown(2);
+    doc.fill('#2C3E50');
+    doc.fontSize(11).text(`Period: ${startDate} to ${endDate}`);
+    doc.text(`Generated on: ${new Date().toLocaleDateString()}`);
+    doc.moveDown(1.5);
 
     const totalRecords = attendanceRecords.length;
     const presentCount = attendanceRecords.filter(r => r.status === 'present').length;
@@ -80,20 +148,54 @@ router.get('/attendance', async (req, res) => {
     doc.fontSize(10).text(`Late: ${lateCount}`);
     doc.moveDown(2);
 
-    doc.fontSize(14).text('Attendance Details', { underline: true });
-    doc.moveDown();
+    // Table header
+    const tableTop = doc.y;
+    const col = [doc.page.margins.left, 170, 260, 360, 430, 500];
+    const drawRow = (y, row, isHeader = false) => {
+      const fill = isHeader ? '#F4F6F8' : '#FFFFFF';
+      doc.rect(doc.page.margins.left, y - 12, doc.page.width - doc.page.margins.left - doc.page.margins.right, 24).fill(fill).stroke('#E5E7EB');
+      doc.fill('#2C3E50').font(isHeader ? 'Helvetica-Bold' : 'Helvetica').fontSize(10);
+      doc.text(row[0], col[0] + 8, y - 8, { width: col[1] - col[0] - 16 });
+      doc.text(row[1], col[1] + 8, y - 8, { width: col[2] - col[1] - 16 });
+      doc.text(row[2], col[2] + 8, y - 8, { width: col[3] - col[2] - 16 });
+      doc.text(row[3], col[3] + 8, y - 8, { width: col[4] - col[3] - 16 });
+      doc.text(row[4], col[4] + 8, y - 8, { width: col[5] - col[4] - 16 });
+    };
+    drawRow(tableTop + 14, ['Employee', 'Emp ID', 'Department', 'Date', 'Hours'], true);
 
-    attendanceRecords.forEach((record, index) => {
-      doc.fontSize(10).text(`${index + 1}. ${record.userId?.fullName || 'Unknown'}`, { continued: true });
-      doc.text(` - ${record.userId?.employeeId || 'N/A'}`, { continued: true });
-      doc.text(` - ${record.userId?.department || 'N/A'}`, { continued: true });
-      doc.text(` - ${record.date.toLocaleDateString()}`, { continued: true });
-      doc.text(` - ${record.status}`, { continued: true });
-      doc.text(` - ${record.totalHours || 0}h`, { align: 'right' });
-      doc.moveDown(0.5);
+    let y = tableTop + 42;
+    attendanceRecords.forEach((record) => {
+      if (y > doc.page.height - doc.page.margins.bottom - 24) {
+        doc.addPage();
+        drawRow(doc.y + 14, ['Employee', 'Emp ID', 'Department', 'Date', 'Hours'], true);
+        y = doc.y + 42;
+      }
+      drawRow(y, [
+        record.userId?.fullName || 'Unknown',
+        record.userId?.employeeId || 'N/A',
+        record.userId?.department || 'N/A',
+        new Date(record.date).toLocaleDateString(),
+        `${(record.totalHours || 0).toFixed(2)}h`
+      ]);
+      y += 26;
     });
 
+    // Finalize PDF
     doc.end();
+    
+    // Ensure response is properly closed
+    res.on('finish', () => {
+      console.log('PDF attendance report generated successfully');
+    });
+    
+    res.on('error', (error) => {
+      console.error('PDF attendance report error:', error);
+    });
+    
+    // Handle stream end
+    doc.on('end', () => {
+      console.log('PDF attendance stream ended successfully');
+    });
   } catch (error) {
     console.error('Error generating attendance report:', error);
     res.status(500).json({ message: 'Failed to generate attendance report' });
