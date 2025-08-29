@@ -6,14 +6,16 @@ const resolvedBaseURL =
   (typeof window !== 'undefined'
     ? (window.location.hostname.endsWith('vercel.app')
         ? 'https://hrms-iwiz.onrender.com/api'
+        : window.location.hostname === 'localhost'
+        ? 'http://localhost:5000/api'
         : '/api')
     : '/api');
 
 // Create axios instance with default config
 const api = axios.create({
   baseURL: resolvedBaseURL,
-  // Render cold starts can take >10s. Use a generous timeout.
-  timeout: 30000,
+  // Use shorter timeout for local development, longer for production
+  timeout: resolvedBaseURL.includes('localhost') ? 10000 : 30000,
   headers: {
     'Content-Type': 'application/json',
   },
