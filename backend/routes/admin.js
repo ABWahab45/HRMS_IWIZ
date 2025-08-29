@@ -30,9 +30,8 @@ router.post('/add-employee', protect, authorize('admin'), [
     .notEmpty()
     .withMessage('Phone number is required'),
   body('dateOfBirth')
-    .optional()
     .isISO8601()
-    .withMessage('Please provide a valid date of birth'),
+    .withMessage('Date of birth is required and must be a valid date'),
   body('salary')
     .optional()
     .isFloat({ min: 0 })

@@ -134,7 +134,8 @@ router.post('/', protect, authorize('admin'), [
     .matches(/^(?=.*[0-9])(?=.*[^A-Za-z0-9]).+$/).withMessage('Password must include a number and symbol'),
   body('department').trim().isIn(['IT', 'HR', 'Finance', 'Marketing', 'Sales', 'Operations', 'Design', 'Management']).withMessage('Department must be IT, HR, Finance, Marketing, Sales, Operations, Design, or Management'),
   body('position').trim().notEmpty().withMessage('Position is required'),
-  body('phone').optional().trim().notEmpty().withMessage('Phone number is required'),
+  body('phone').trim().notEmpty().withMessage('Phone number is required'),
+  body('dateOfBirth').isISO8601().withMessage('Date of birth is required and must be a valid date'),
   body('dateOfJoining').optional().isISO8601().withMessage('Invalid date format'),
   body('salary').optional().isNumeric().withMessage('Salary must be a number')
 ], async (req, res) => {
@@ -157,6 +158,7 @@ router.post('/', protect, authorize('admin'), [
       department,
       position,
       phone,
+      dateOfBirth,
       dateOfJoining,
       salary,
       address,
@@ -186,6 +188,7 @@ router.post('/', protect, authorize('admin'), [
       department,
       position,
       phone,
+      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : new Date(),
       dateOfJoining: dateOfJoining ? new Date(dateOfJoining) : new Date(),
       salary,
       address,

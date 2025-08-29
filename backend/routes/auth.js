@@ -12,6 +12,38 @@ router.get('/test', (req, res) => {
   return res.json({ success: true, message: 'Auth service reachable' });
 });
 
+// @route   GET /api/auth/me
+// @desc    Get current user profile
+// @access  Private
+router.get('/me', protect, async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: req.user._id,
+          fullName: req.user.fullName,
+          email: req.user.email,
+          role: req.userRole,
+          department: req.user.department,
+          position: req.user.position,
+          phone: req.user.phone,
+          address: req.user.address,
+          dateOfBirth: req.user.dateOfBirth,
+          dateOfJoining: req.user.dateOfJoining,
+          salary: req.user.salary,
+          profilePicture: req.user.profilePicture,
+          emergencyContact: req.user.emergencyContact,
+          ...(req.userRole === 'admin' ? { adminId: req.user.adminId } : { employeeId: req.user.employeeId, leaveBalance: req.user.leaveBalance })
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get profile error:', error);
+    res.status(500).json({ message: 'Server error while fetching profile' });
+  }
+});
+
 // @route   POST /api/auth/register
 // @desc    Admin creates a new user (Admin or Employee)
 // @access  Private (Admin)
