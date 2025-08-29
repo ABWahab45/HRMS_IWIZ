@@ -6,16 +6,14 @@ const resolvedBaseURL =
   (typeof window !== 'undefined'
     ? (window.location.hostname.endsWith('vercel.app')
         ? 'https://hrms-iwiz.onrender.com/api'
-        : window.location.hostname === 'localhost'
-        ? 'http://localhost:5000/api'
         : '/api')
     : '/api');
 
 // Create axios instance with default config
 const api = axios.create({
   baseURL: resolvedBaseURL,
-  // Use shorter timeout for local development, longer for production
-  timeout: resolvedBaseURL.includes('localhost') ? 10000 : 30000,
+  // Render cold starts can take >10s. Use a generous timeout.
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -42,7 +40,10 @@ api.interceptors.response.use(
     // Redirect to login on unauthorized
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      // Only redirect if not already on login page
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
       return Promise.reject(error);
     }
 
@@ -74,7 +75,16 @@ api.interceptors.response.use(
       if (error.response?.status >= 500) {
         return 'Server error, please try again later.';
       }
-      return error.message;
+      if (error.response?.status === 404) {
+        return 'The requested resource was not found.';
+      }
+      if (error.response?.status === 403) {
+        return 'You do not have permission to access this resource.';
+      }
+      if (error.response?.status === 400) {
+        return error.response?.data?.message || 'Invalid request. Please check your input.';
+      }
+      return error.response?.data?.message || error.message || 'An unexpected error occurred.';
     })();
     error.userMessage = message;
     return Promise.reject(error);
